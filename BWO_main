@@ -1,0 +1,443 @@
+clc;
+clear;
+close all;
+
+
+nrep =10;
+MaxIt = 20;
+numFunctions = 16;
+nVar = 3;
+max_branch = 3;
+min_branch = 1;
+min_per_branch = 1;
+max_per_branch = 5;
+
+
+
+stepDiv= 0.5;
+
+
+result= zeros(numFunctions,nrep);
+Bestresult = zeros(MaxIt, numFunctions);
+
+costFunctions = {@(x) costFunction1(x),@(x) costFunction2(x), @(x) costFunction3(x), @(x) costFunction4(x),@(x) costFunction5(x), ...
+                 @(x) costFunction6(x), @(x) costFunction7(x), @(x) costFunction8(x), @(x) costFunction9(x), @(x) costFunction10(x), ...
+                 @(x) costFunction11(x),@(x) costFunction12(x), @(x) costFunction13(x),@(x) costFunction14(x), @(x) costFunction15(x),...
+                 @(x) costFunction16(x)};
+             
+             
+ 
+
+for rep = 1: nrep
+
+        
+% Cost Function
+for l = 1:numFunctions
+
+ fprintf('Running function... Step %d of %d\n', l, numFunctions);
+CostFunction =costFunctions{l};
+
+       switch l
+            case {1, 3, 4, 6}, VarMin = -100; VarMax = 100;
+            case 2, VarMin = -10; VarMax = 10;
+            case 5, VarMin = -30; VarMax = 30;
+            case 7, VarMin = -1.28; VarMax = 1.28;
+            case 8, VarMin = -500; VarMax = 500;
+            case 9, VarMin = -5.12; VarMax = 5.12;
+            case 10, VarMin = -32; VarMax = 32;
+            case 11, VarMin = -600; VarMax = 600;
+            case {12, 13}, VarMin = -50; VarMax = 50;
+            case 14, VarMin = 0; VarMax = pi;
+            case 15, VarMin = -20; VarMax = 20;
+            case 16, VarMin = -10; VarMax = 10;
+       end
+        
+%        switch l
+%             case {1, 3, 4, 6}, VarMin = -10; VarMax = 10;
+%             case 2, VarMin = -1; VarMax = 1;
+%             case 5, VarMin = -3; VarMax = 3;
+%             case 7, VarMin = -1.28; VarMax = 1.28;
+%             case 8, VarMin = -50; VarMax = 50;
+%             case 9, VarMin = -5.12; VarMax = 5.12;
+%             case 10, VarMin = -3; VarMax = 3;
+%             case 11, VarMin = -60; VarMax = 60;
+%             case {12, 13}, VarMin = -5; VarMax = 5;
+%             case 14, VarMin = 0; VarMax = pi;
+%             case 15, VarMin = -2; VarMax = 2;
+%             case 16, VarMin = -1; VarMax = 1;
+%         end
+
+VarSize = [1 nVar]; % Decision Variables Matrix Size
+
+min_step_size = 0.0010;
+max_step_size =12.5;
+
+
+
+nPop0 = 18;     
+nPop =30;    
+
+Smin = 0;      
+Smax =5;      
+
+Exponent = 2;           
+sigma_initial = 1;     
+sigma_final = 1e-7;	
+
+%% Initialization
+
+% Empty Plant Structure
+empty_plant.Position = [];
+empty_plant.Cost = [];
+
+pop = repmat(empty_plant, nPop0, 1);    % Initial Population Array
+
+for i = 1:numel(pop)
+    
+    % Initialize Position
+    pop(i).Position = unifrnd(VarMin, VarMax, VarSize);
+    
+    % Evaluation
+    pop(i).Cost = CostFunction(pop(i).Position);
+    
+end
+
+% Initialize Best Cost History
+BestCosts = zeros(MaxIt, 1);
+
+%% IWO Main Loop
+
+for it = 1:MaxIt
+    
+    % Update Standard Deviation
+    sigma = ((MaxIt - it) / MaxIt)^Exponent * (sigma_initial - sigma_final) + sigma_final;
+    % Get Best and Worst Cost Values
+    Costs = [pop.Cost];
+    BestCost = min(Costs);
+    WorstCost = max(Costs);
+    
+    % Initialize Offsprings Population
+    newpop = [];
+    
+    % Reproduction
+    
+
+    for i = 1:numel(pop)
+        
+        % Avoid division by zero
+            if BestCost == WorstCost
+                ratio = 0;
+            else
+                ratio = (pop(i).Cost - WorstCost) / (BestCost - WorstCost);
+            end
+            
+        S = floor(Smin + (Smax - Smin)*ratio);
+        
+        
+        for j = 1:S
+            
+            % Initialize Offspring
+            newsol = empty_plant;
+            
+
+            
+            newsol.Position = pop(i).Position +  sigma * randn(VarSize);
+            
+      
+            newsol.Position = max(newsol.Position, VarMin);
+            newsol.Position = min(newsol.Position, VarMax);
+        
+            newsol.Cost = CostFunction(newsol.Position);
+           
+            newpop = [newpop
+                      newsol];  %#ok
+            
+        end
+        
+         num_branches = floor(min_branch + (max_branch - min_branch)*ratio);
+         num_children_per_branch = floor(min_per_branch + (max_per_branch - min_per_branch)*ratio);
+         initial_step_size =  floor(min_step_size + (max_step_size - min_step_size)*ratio);
+
+        % Ensure valid values for num_branches and num_children_per_branch
+                if num_branches <= 0 || num_children_per_branch <= 0
+                    continue;
+                end
+                
+                  % Generate branch directions
+                try
+                    branch_directions = randn(num_branches, nVar);
+                    branch_directions = (branch_directions ./ sqrt(sum(branch_directions.^2, 2)))*sqrt(rand());
+                catch
+                    error('Error generating branch directions. Check num_branches and nVar.');
+                end
+        
+        
+for br = 1:num_branches
+  newsol = empty_plant;
+  
+    step_sizes = initial_step_size * (stepDiv) .^ (0:num_children_per_branch-1);
+    
+min_cost = inf;
+best_position = [];
+
+for k = 1:num_children_per_branch
+    t = sum(step_sizes(1:k));  
+    child_position = pop(i).Position + t * branch_directions(br, :);
+        
+    % Calculate the fitness (cost) of the child position
+    child_fitness = CostFunction(child_position);
+    
+    % Check if this child has a lower cost than the current minimum
+    if (child_fitness < min_cost)
+        min_cost = child_fitness; % Update the minimum cost
+        best_position = child_position; % Update the best positio
+    end
+end
+
+newsol.Position = best_position;
+newsol.Cost = min_cost;
+    
+            newsol.Position = max(newsol.Position, VarMin);
+            newsol.Position = min(newsol.Position, VarMax);
+        
+            newsol.Cost = CostFunction(newsol.Position);
+           
+%              % Check for NaN or Inf in Cost
+%               if isnan(newsol.Cost) || isinf(newsol.Cost)
+%                         warning('Invalid cost value detected for offspring. Skipping...');
+%                         continue;
+%               end
+                    
+            newpop = [newpop
+                      newsol];  %#ok
+    
+    
+end
+
+
+        
+    end
+    
+    % Merge Populations
+    pop = [pop
+           newpop];
+    
+    % Sort Population
+    [~, SortOrder]=sort([pop.Cost]);
+    pop = pop(SortOrder);
+
+    % Competitive Exclusion (Delete Extra Members)
+    if numel(pop)>nPop
+        pop = pop(1:nPop);
+    end
+    
+    % Store Best Solution Ever Found
+    BestSol = pop(1);
+    
+    % Store Best Cost History 
+    BestCosts(it) = BestSol.Cost;
+    
+    
+     Bestresult(it,l) =Bestresult(it,l)+ BestSol.Cost;
+     
+    % Display Iteration Information
+    disp(['Iteration ' num2str(it) ': Best Cost = ' num2str(BestCosts(it))]);
+    
+end
+
+result(l,rep) =  BestCosts(MaxIt);
+
+end
+
+end
+
+Bestresult=Bestresult/5;
+
+% Display final results
+fprintf('\n=== FINAL RESULTS ===\n');
+for l = 1:numFunctions
+    fprintf('Function %d: Mean = %.6e, Std = %.6e\n', l, mean(result(l, :)), std(result(l, :)));
+end
+
+% for l = 1:16
+%     
+% minValues(l) = min(result(l,1:end));
+% maxValues(l) = max(result(l,1:end));
+% meanValues(l) = mean(result(l,1:end));
+% stdValues(l) = std(result(l,1:end));
+% 
+%     fprintf('%d\t\t%.4f\t%.4f\t%.4f\t%.4f\n', l, minValues(l), maxValues(l), meanValues(l), stdValues(l));
+% end
+
+% ÊÇÈÚ åÒ?äå f1
+function f = costFunction1(x)
+    f = sum(x.^2);  % f1(x) = sum(x_i^2)
+end
+
+% ÊÇÈÚ åÒ?äå f2
+function f = costFunction2(x)
+  
+    sum_abs = sum(abs(x));       % ãÌãæÚ ãÞÇÏ?Ñ ãØáÞ ÊãÇã? ÚäÇÕÑ
+    prod_abs = prod(abs(x));     % ÖÑÈ ãÞÇÏ?Ñ ãØáÞ ÊãÇã? ÚäÇÕÑ
+    f = sum_abs + prod_abs;      % ÖÑÈ ãÌãæÚ æ ÖÑÈ ãÞÇÏ?Ñ ãØáÞ
+
+end
+
+% ÊÇÈÚ åÒ?äå f3
+function f = costFunction3(x)
+
+    n = length(x);
+    f = 0;
+    for i = 1:n
+        f = f + (sum(x(1:i)))^2;
+    end
+
+end
+
+% ÊÇÈÚ åÒ?äå f4
+function f = costFunction4(x)
+    f = max(abs(x));  % f4(x) = max(|x_i|)
+end
+
+% ÊÇÈÚ åÒ?äå f5
+function f = costFunction5(x)
+    n = length(x);  % ÊÚÏÇÏ ÚäÇÕÑ æÑæÏ?
+    f = 0;  % ãÞÏÇÑ Çæá?å ÊÇÈÚ åÒ?äå
+    for i = 1:n-1
+        f = f + 100 * (x(i+1) - x(i)^2)^2 + (x(i) - 1)^2;
+    end
+    f = f + 30;  % ÇÖÇÝå ˜ÑÏä 30 Èå äÊ?Ìå  
+end
+
+% ÊÇÈÚ åÒ?äå f6
+function f = costFunction6(x)
+    f = sum((x + 0.5).^2);  % f6(x) = sum((x_i + 0.5)^2)
+end
+
+% ÊÇÈÚ åÒ?äå f7
+function f = costFunction7(x)
+    n = length(x);
+    f = sum((1:n).*x.^4) + rand;  % f7(x) = sum(i * x_i^4) + random(0, 1)
+end
+
+% ÊÇÈÚ åÒ?äå F8
+function f = costFunction8(x)
+     f = sum(-x .* sin(sqrt(abs(x))));   % F8(x) = sum(-x_i * sin(sqrt(abs(x_i))))
+end
+
+% ÊÇÈÚ åÒ?äå F9
+function f = costFunction9(x)
+    f = sum(x.^2 - 10 * cos(2 * pi * x) + 10);  % F9(x) = sum(x_i^2 - 10 * cos(2 * pi * x_i) + 10)
+end
+
+% ÊÇÈÚ åÒ?äå F10
+function f = costFunction10(x)
+    n = length(x);
+    f = -20 * exp(-0.2 * sqrt(sum(x.^2)/n)) - exp(sum(cos(2 * pi * x))/n) + 20 + exp(1);  % F10(x)
+end
+
+% ÊÇÈÚ åÒ?äå F11
+function f = costFunction11(x)
+    n = length(x);
+    f = (1/4000) * sum(x.^2) - prod(cos(x./sqrt(1:n))) + 1;  % F11(x)
+end
+
+
+function f = costFunction12(x)
+    % Number of variables
+    n = length(x);
+
+    % Transformation of variables y_i from x_i
+    y = 1 + (x + 1) / 4;
+    
+    % First term: p * f10 * sin(pi * y1)
+    term1 = 10 * sin(pi * y(1));
+
+    % Second term: Summation of (y_i - 1)^2 * (1 + 10 * sin^2(pi * y_{i+1}))
+    term2 = sum((y(1:n-1) - 1).^2 .* (1 + 10 * sin(pi * y(2:n)).^2)) + (y(n) - 1)^2;
+
+    % Third term: Summation of penalty function u(x_i, 10, 100, 4)
+    a = 10; k = 100; m = 4;
+    u = arrayfun(@(xi) penaltyFunction(xi, a, k, m), x);
+    term3 = sum(u);
+
+    % Final function value
+    f = (pi/n)*(term1 + term2) + term3 + 30;
+end
+
+function u_val = penaltyFunction(xi, a, k, m)
+    % Penalty function u(xi, a, k, m)
+    if xi > a
+        u_val = k * (xi - a)^m;
+    elseif xi < -a
+        u_val = k * (-xi - a)^m;
+    else
+        u_val = 0;
+    end
+end
+
+function f = costFunction13(x)
+    % Number of variables
+    n = length(x);
+
+    % Parameters for the penalty function u(x_i, a, k, m)
+    a = 5; k = 100; m = 4;
+
+    % First term: 0.1 * sin^2(3 * pi * x1)
+    term1 = sin(3 * pi * x(1))^2;
+
+    % Second term: Summation of (x_i - 1)^2 * (1 + sin^2(3 * pi * x_{i+1}))
+    term2 = sum((x(1:n) - 1).^2 .* (1 + sin(3 * pi * x(1:n)+1).^2));
+
+    % Third term: (x_n - 1)^2 * (1 + sin^2(2 * pi * x_n))
+    term3 = (x(n) - 1)^2 * (1 + sin(2 * pi * x(n))^2);
+
+    a = 5; k = 100; m = 4;
+    u = arrayfun(@(xi) penaltyFunction(xi, a, k, m), x);
+    term4 = sum(u);
+
+    % Final function value
+    f = 0.1*(term1 + term2 + term3) + term4;
+end
+
+
+
+
+function y = costFunction14(x)
+    % ÊÚÏÇÏ ãÊÛ?ÑåÇ
+    n = length(x);
+    % ãÞÏÇÑ m ãØÇÈÞ ÊÚÑ?Ý ÊÇÈÚ
+    m = 10;
+    % ãÍÇÓÈå ÊÇÈÚ
+    y = -1*(sum(sin(x) .* ((sin((1:n) .* x.^2 )/pi)).^(2*m)));
+end
+
+
+function f = costFunction15(x)
+
+   n = length(x);
+f = 0;
+
+for i = 1:n
+    f = f + abs(x(i))^(i+1);
+end
+
+end
+function f = costFunction16(x)
+
+ 
+    term1 = sum(sin(x).^2);
+
+    term2 = exp(-sum(x.^2));
+    
+  
+    term3 = sum(sin(sqrt(abs(x))).^2);
+
+    f = (term1 - term2) * exp(-term3);
+end
+
+
+
+
+
+
