@@ -1,0 +1,225 @@
+clc; clear; close all;
+
+%% Algorithm Parameters
+MaxIt = 50;        % Maximum Number of Iterations
+nVar = 3;           % Number of Decision Variables (Kp, Ki, Kd)
+VarMin = -10;       % Lower Bound of Decision Variables
+VarMax = 10;        % Upper Bound of Decision Variables
+
+% IWO Parameters
+nPop0 = 10;         % Initial Population Size
+nPop = 30;         % Maximum Population Size
+Smin = 0;           % Minimum Number of Seeds
+Smax = 5;           % Maximum Number of Seeds
+Exponent = 2;       % Nonlinear Modulation Index
+sigma_initial = 1;  % Initial Standard Deviation
+sigma_final = 1e-7; % Final Standard Deviation
+
+min_step_size = 1;
+max_step_size =10;
+
+% Branching Parameters
+max_branch = 10;     % Maximum number of branches
+min_branch = 1;     % Minimum number of branches
+min_per_branch = 1; % Minimum children per branch
+max_per_branch = 5; % Maximum children per branch
+stepDiv = 0.5;      % Step size division factor
+
+% Transfer Function
+s = tf('s');
+G= 2.4767 / ((s+0.0476)*(s+1)*(s+5)); 
+
+%% Cost Function
+CostFunction = @(x) MyCost(x, G);
+
+%% Initialization
+empty_plant.Position = [];
+empty_plant.Cost = [];
+
+% Initialize Population
+pop = repmat(empty_plant, nPop0, 1);
+for i = 1:numel(pop)
+    pop(i).Position = unifrnd(VarMin, VarMax, [1 nVar]);
+    pop(i).Cost = CostFunction(pop(i).Position);
+end
+
+% Initialize Best Cost History
+BestCosts = zeros(MaxIt, 1);
+BestSols = cell(MaxIt, 1);
+
+%% IWO Main Loop
+for it = 1:MaxIt
+    % Update Standard Deviation
+    sigma = ((MaxIt - it)/MaxIt)^Exponent * (sigma_initial - sigma_final) + sigma_final;
+    
+    % Get Best and Worst Cost Values
+    Costs = [pop.Cost];
+    BestCost = min(Costs);
+    WorstCost = max(Costs);
+    
+    % Initialize Offspring Population
+    newpop = [];
+    
+    % Reproduction
+    for i = 1:numel(pop)
+        % Calculate reproduction ratio
+        if BestCost == WorstCost
+            ratio = 0;
+        else
+            ratio = (pop(i).Cost - WorstCost)/(BestCost - WorstCost);
+        end
+        
+        % Number of seeds
+        S = floor(Smin + (Smax - Smin)*ratio);
+        
+        % Generate seeds around the parent plant
+        for j = 1:S
+            newsol = empty_plant;
+            newsol.Position = pop(i).Position + sigma * randn(1, nVar);
+            
+            % Apply bounds
+            newsol.Position = max(newsol.Position, VarMin);
+            newsol.Position = min(newsol.Position, VarMax);
+            
+            newsol.Cost = CostFunction(newsol.Position);
+            newpop = [newpop; newsol];
+        end
+        
+        % Branching process
+        num_branches = floor(min_branch + (max_branch - min_branch)*ratio);
+        num_children_per_branch = floor(min_per_branch + (max_per_branch - min_per_branch)*ratio);
+        
+        if num_branches > 0 && num_children_per_branch > 0
+            % Generate branch directions
+            branch_directions = randn(num_branches, nVar);
+            branch_directions = (branch_directions ./ sqrt(sum(branch_directions.^2, 2)))*sqrt(rand());
+            initial_step_size =  floor(min_step_size + (max_step_size - min_step_size)*ratio);
+            
+            for br = 1:num_branches
+                newsol = empty_plant;
+                 step_sizes = initial_step_size * (stepDiv) .^ (0:num_children_per_branch-1);
+                
+                min_cost = inf;
+                best_position = [];
+                
+                for k = 1:num_children_per_branch
+                  t = sum(step_sizes(1:k));  
+    
+                  newsol.Position = pop(i).Position + t * branch_directions(br, :);
+      
+            newsol.Position = max(newsol.Position, VarMin);
+            newsol.Position = min(newsol.Position, VarMax);
+            newsol.Cost = CostFunction(newsol.Position);
+           
+            newpop = [newpop
+                      newsol];  %#ok
+                end
+                
+            end
+        end
+    end
+    
+    % Merge Populations
+    pop = [pop; newpop];
+    
+    % Sort Population
+    [~, SortOrder] = sort([pop.Cost]);
+    pop = pop(SortOrder);
+    
+    % Competitive Exclusion
+    if numel(pop) > nPop
+        pop = pop(1:nPop);
+    end
+    
+    % Store Best Solution
+    BestSol = pop(1);
+    BestCosts(it) = BestSol.Cost;
+    BestSols{it} = BestSol;
+    
+    % Display Iteration Information
+    disp(['Iteration ' num2str(it) ': Best Cost = ' num2str(BestCosts(it))]);
+    
+end
+
+%% Results Visualization
+figure;
+subplot(2,1,1);
+semilogy(BestCosts(1:it), 'LineWidth', 2);
+xlabel('Iteration');
+ylabel('Best Cost');
+title('Convergence History');
+grid on;
+
+% Analyze system response with optimal coefficients
+[~, out] = MyCost(BestSol.Position, G);
+
+% Display system response characteristics
+disp('System response characteristics with optimal coefficients:');
+disp(['Settling Time: ', num2str(out.Ts), ' seconds']);
+disp(['Overshoot: ', num2str(out.Mp_speed), '%']);
+disp(['ISE Speed: ', num2str(out.ISE_Speed), '']);
+disp(['Max Jerk: ', num2str(out.MaxJerk), 'm/s^2']);
+disp(['Closed-loop system poles: ']);
+disp(pole(out.T));
+
+% Plot the system step response
+subplot(2,1,2);
+step(out.T);
+title('System Step Response with Optimized PID Coefficients');
+grid on;
+
+function [z, out] = MyCost(x, G)
+
+    % Controller gains
+    kp = x(1);
+    ki = x(2);
+    kd = x(3);
+    Tf = 0.1;
+
+    % Reference speed
+    Vref = 30;
+
+    % Weights for the cost function
+    W1 = 1;
+    W2 = 15;
+    W3 = 3;
+    W4 = 8;
+
+    % PID controller and closed-loop system
+    K = pid(kp, ki, kd, Tf);
+    T = feedback(K * G, 1);  % Closed-loop transfer function
+
+    % Simulation time
+    t = 0:0.01:50;
+
+    % Speed response
+    v_ref = Vref * ones(size(t));
+    v_actual = step(Vref * T, t);
+
+    % Error in speed
+    e_speed = v_ref(:) - v_actual(:);
+    ISE_Speed = trapz(t, e_speed.^2);  % Integral of Squared Error
+
+    % Overshoot in speed
+    Mp_speed = max(v_actual) - Vref;
+
+    % Settling time
+    step_info = stepinfo(v_actual, t, Vref);
+    Ts = step_info.SettlingTime;
+
+    % Acceleration (first derivative of speed)
+    a_actual = [0; diff(v_actual)./diff(t(:))];
+    a_desired = zeros(size(a_actual));  % Assume constant desired acceleration = 0
+    ISE_Acceleration = trapz(t, (a_desired - a_actual).^2);
+
+    % Jerk (derivative of acceleration)
+    j = [0; diff(a_actual)./diff(t(:))];
+    max_jerk = max(abs(j));
+
+    % Final cost function
+    z = W1 * ISE_Speed + ...
+        W2 * Mp_speed + ...
+        W3 * Ts + ...
+        W4 * max_jerk;
+end
+
