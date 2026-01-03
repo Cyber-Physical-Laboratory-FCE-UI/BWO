@@ -1,0 +1,56 @@
+
+  Algorithm Pseudocode
+  Algorithm: Bermuda Weed Optimization (BWO)
+  Input:
+  1: Algorithm parameters:
+        - T (Maximum iterations)
+        - DMin, DMax (Search space bounds)
+        - P (Population size)
+        - Other control parameters
+Output:
+  2: GlobalBest (Best solution found)
+
+Begin
+  % Initialization Phase
+  3: Initialize population positions randomly within [DMin, DMax]
+  4: Evaluate fitness values using CostFunction
+  5: Identify BestCost and WorstCost in population
+
+  % Main Optimization Loop
+  6: for t = 1 to T do
+      % Parameter Update
+      7: Calculate σ(t) using Eq. 2
+
+      % Reproduction Phase
+      8: new_population = []
+      9: for each weed in population do
+          % Seed-Based Reproduction (Local Search)
+          10: Calculate number of seeds (S) using Eq. 1
+          11: for j = 1 to S do
+              12: Calculate position of offspring using Eq. 3
+              13: Evaluate fitness of offspring using CostFunction
+              14: Add offspring to new_population
+              15: end for
+
+          % Node-Based Reproduction (Global Search)
+          16: Calculate number of branches (B) using Eq. 4
+          17: for br = 1 to B do
+              18: Calculate number of offspring (R) using Eq. 5
+              19: Calculate offspring distances using Eq. 6 and Eq. 7
+              20: for k = 1 to R do
+                  21: Calculate offspring position using Eq. 8
+                  22: Evaluate fitness of offspring using CostFunction
+                  25: Add selected offspring to new_population
+                  26: end for
+              27: end for
+         end for
+
+      % Selection Phase
+      28: Combine parent population with new_population
+      29: Sort combined population by ascending Cost
+      30: Select top P individuals as new population
+      31: Update GlobalBest if better solution found
+      32: end for
+
+  33: Return GlobalBest
+End
